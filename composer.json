@@ -1,0 +1,6 @@
+{
+    "name": "makehaven/chargebee_status_sync",
+    "type": "drupal-custom-module",
+    "description": "Syncs status updates from Chargebee to Drupal.",
+    "license": "GPL-2.0-or-later"
+}

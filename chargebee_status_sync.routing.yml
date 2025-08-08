@@ -1,0 +1,17 @@
+chargebee_status_sync.webhook:
+  path: '/chargebee-webhook/{token}'
+  defaults:
+    _controller: '\Drupal\chargebee_status_sync\Controller\ChargebeeWebhookController::listener'
+    _title: 'Chargebee Webhook'
+  requirements:
+    _permission: 'access content'
+
+chargebee_status_sync.settings:
+  path: '/admin/config/services/chargebee_portal/status-sync'
+  defaults:
+    _form: '\Drupal\chargebee_status_sync\Form\ChargebeeStatusSyncSettingsForm'
+    _title: 'Status Sync'
+  requirements:
+    _permission: 'administer site configuration'
+  options:
+    _admin_route: TRUE

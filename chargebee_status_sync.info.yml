@@ -1,0 +1,7 @@
+name: 'Chargebee Status Sync'
+type: module
+description: 'Syncs status updates from Chargebee to Drupal.'
+package: Custom
+core_version_requirement: ^10
+dependencies:
+  - drupal:field
