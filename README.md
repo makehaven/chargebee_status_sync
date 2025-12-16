@@ -39,6 +39,7 @@ Features
     * Membership end date and cancellation reason.
     * Membership reactivation date.
     * Monthly payment amount.
+* Billing Plan Vocabulary: Automatically creates/updates `billing_plan` taxonomy terms (plan id, provider, amount, currency) when webhook events arrive and applies the mapped membership type to the member profile.
 * Webhook Handling: Listens for a variety of Chargebee webhook events to keep user data in sync. Handled events include:
     * subscription_created
     * subscription_updated

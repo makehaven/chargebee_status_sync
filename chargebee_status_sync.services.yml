@@ -1,0 +1,6 @@
+services:
+  chargebee_status_sync.plan_manager:
+    class: Drupal\chargebee_status_sync\Service\PlanManager
+    arguments:
+      - '@entity_type.manager'
+      - '@logger.factory'

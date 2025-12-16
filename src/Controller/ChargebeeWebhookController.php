@@ -8,6 +8,7 @@ use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\DependencyInjection\ContainerInterface;
 use Drupal\Core\Config\ConfigFactoryInterface;
 use Drupal\chargebee_status_sync\Form\ChargebeeStatusSyncSettingsForm;
+use Drupal\chargebee_status_sync\Service\PlanManager;
 use Drupal\user\Entity\User;
 use Drupal\Core\Logger\LoggerChannelFactoryInterface;
 use Drupal\profile\Entity\Profile;
@@ -28,16 +29,19 @@ class ChargebeeWebhookController extends ControllerBase {
   protected $logger;
 
   /**
-   * Constructs a ChargebeeWebhookController object.
+   * Plan manager service.
    *
-   * @param \Drupal\Core\Config\ConfigFactoryInterface $config_factory
-   *   The configuration factory.
-   * @param \Drupal\Core\Logger\LoggerChannelFactoryInterface $logger_factory
-   *   The logger channel factory.
+   * @var \Drupal\chargebee_status_sync\Service\PlanManager
    */
-  public function __construct(ConfigFactoryInterface $config_factory, LoggerChannelFactoryInterface $logger_factory) {
+  protected PlanManager $planManager;
+
+  /**
+   * Constructs a ChargebeeWebhookController object.
+   */
+  public function __construct(ConfigFactoryInterface $config_factory, LoggerChannelFactoryInterface $logger_factory, PlanManager $plan_manager) {
     $this->configFactory = $config_factory;
     $this->logger = $logger_factory->get('chargebee_status_sync');
+    $this->planManager = $plan_manager;
   }
 
   /**
@@ -46,7 +50,8 @@ class ChargebeeWebhookController extends ControllerBase {
   public static function create(ContainerInterface $container) {
     return new static(
       $container->get('config.factory'),
-      $container->get('logger.factory')
+      $container->get('logger.factory'),
+      $container->get('chargebee_status_sync.plan_manager')
     );
   }
 
@@ -67,7 +72,7 @@ class ChargebeeWebhookController extends ControllerBase {
     $stored_token = $config->get('chargebee_status_sync_token');
 
     // Verify the token.
-    if ($stored_token !== $token) {
+    if (!hash_equals((string) $stored_token, (string) $token)) {
       $this->logger->error('Access denied: Invalid token.');
       return new Response('Access denied: Invalid token.', 403);
     }
@@ -133,58 +138,52 @@ switch ($data['event_type']) {
             case 'subscription_created':
             case 'subscription_updated':
             case 'subscription_reactivated':
-                $plan_amount = $data['content']['subscription']['plan_amount'] ?? NULL;
-                $plan_id = $data['content']['subscription']['plan_id'] ?? 'Unknown'; // Corrected plan ID extraction
+                $plan_amount_cents = $data['content']['subscription']['plan_amount'] ?? NULL;
+                $plan_amount = $plan_amount_cents !== NULL ? $plan_amount_cents / 100 : NULL;
+                $plan_id = $data['content']['subscription']['plan_id'] ?? 'Unknown';
+                $currency = $data['content']['subscription']['currency_code'] ?? NULL;
                 $user = $this->getUserByCustomerId($customer_id);
-                $profile = $this->getUserProfileByCustomerId($customer_id);
-            
+                $plan_term = NULL;
+
                 if ($plan_amount !== NULL) {
-                    // Convert amount from cents to dollars (if applicable).
-                    $plan_amount = $plan_amount / 100;
-            
                     $this->logger->notice('Handling subscription event for customer ID: @customer_id with plan amount: @amount', [
                         '@customer_id' => $customer_id,
                         '@amount' => $plan_amount,
                     ]);
-            
                     $this->updateMonthlyPaymentField($customer_id, $plan_amount);
-                } else {
+                }
+                else {
                     $this->logger->warning('No plan amount found in webhook for customer ID: @customer_id', [
                         '@customer_id' => $customer_id,
                     ]);
                 }
-            
-                // Update the plan field with the latest plan ID.
+
+                if (!empty($plan_id)) {
+                    $plan_term = $this->planManager->upsertPlan($plan_id, [
+                        'amount' => $plan_amount,
+                        'currency' => $currency,
+                        'provider' => 'chargebee',
+                    ]);
+                }
+
                 $this->logger->notice('Updating plan for customer ID: @customer_id to: @plan_id', [
                     '@customer_id' => $customer_id,
                     '@plan_id' => $plan_id,
                 ]);
                 $this->updateUserPlan($customer_id, $plan_id);
-            
-                // Clear cancellation fields if reactivating.
+
+                if ($plan_term && $user) {
+                    $this->planManager->assignMembershipTypeToUser($user, $plan_term);
+                }
+
                 if ($data['event_type'] === 'subscription_reactivated') {
                     $this->clearCancellationFields($customer_id);
+                    if ($user) {
+                        $this->clearUserPauseField($user);
+                    }
                 }
-            
+
                 break;
-            
-  
-
-  case 'subscription_reactivated':
-      $this->logger->notice('Handling subscription reactivated for customer ID: @customer_id', ['@customer_id' => $customer_id]);
-      
-      $user = $this->getUserByCustomerId($customer_id);
-      $profile = $this->getUserProfileByCustomerId($customer_id);
-
-      if ($user) {
-        $this->clearUserPauseField($user); // Clear the pause field on reactivation.
-        }
-      
-      $this->clearCancellationFields($customer_id);
-
-      // Add Member Role on reactivation.
-      $this->addMemberRole($customer_id);
-      break;
 
   case 'payment_failed':
       $this->logger->notice('Handling payment failed for customer ID: @customer_id', ['@customer_id' => $customer_id]);
