@@ -8,6 +8,7 @@ use Symfony\Component\DependencyInjection\ContainerInterface;
 use Drupal\Core\Config\ConfigFactoryInterface;
 use Drupal\Component\Utility\Crypt;
 use Drupal\user\Entity\Role;
+use Drupal\user\Entity\User;
 
 class ChargebeeStatusSyncSettingsForm extends ConfigFormBase {
   /**
@@ -56,14 +57,8 @@ class ChargebeeStatusSyncSettingsForm extends ConfigFormBase {
   public function buildForm(array $form, FormStateInterface $form_state) {
     $config = $this->config('chargebee_status_sync.settings');
 
-    // Role selection dropdown (exclude locked roles).
-    $roles = [];
-    foreach (Role::loadMultiple() as $role_id => $role) {
-      if ($role->isLocked()) {
-        continue;
-      }
-      $roles[$role_id] = $role->label();
-    }
+    // Role selection dropdown.
+    $roles = array_map(fn($role) => $role->label(), Role::loadMultiple());
     $form['chargebee_status_member_role'] = [
       '#type' => 'select',
       '#title' => $this->t('Member Role'),
