@@ -176,11 +176,12 @@ switch ($data['event_type']) {
                     $this->planManager->assignMembershipTypeToUser($user, $plan_term);
                 }
 
-                if ($data['event_type'] === 'subscription_reactivated') {
-                    $this->clearCancellationFields($customer_id);
-                    if ($user) {
-                        $this->clearUserPauseField($user);
-                    }
+                // Ensure active status (add role, clear cancellation flags) for all active subscription events.
+                // This covers new subscriptions (created), plan changes (updated), and reactivations.
+                // Note: clearCancellationFields checks if the user was actually cancelled before setting reactivation date.
+                $this->clearCancellationFields($customer_id);
+                if ($user) {
+                    $this->clearUserPauseField($user);
                 }
 
                 break;
@@ -289,12 +290,14 @@ protected function clearCancellationFields($customer_id) {
   $profile = $this->getUserProfileByCustomerId($customer_id);
   if ($profile) {
       $profile_modified = FALSE;
+      $was_cancelled = FALSE;
 
       // Clear the end date field.
       if ($profile->hasField('field_member_end_date') && !$profile->get('field_member_end_date')->isEmpty()) {
           $this->logger->notice('Clearing end date for profile ID: @profile_id', ['@profile_id' => $profile->id()]);
           $profile->set('field_member_end_date', NULL);
           $profile_modified = TRUE;
+          $was_cancelled = TRUE;
       }
 
       // Clear the end reason field.
@@ -302,10 +305,11 @@ protected function clearCancellationFields($customer_id) {
           $this->logger->notice('Clearing end reason for profile ID: @profile_id', ['@profile_id' => $profile->id()]);
           $profile->set('field_member_end_reason', NULL);
           $profile_modified = TRUE;
+          $was_cancelled = TRUE;
       }
 
-      // Set the reactivation date field.
-      if ($profile->hasField('field_member_reactivation_date')) {
+      // Set the reactivation date field only if the user was previously cancelled.
+      if ($was_cancelled && $profile->hasField('field_member_reactivation_date')) {
           $reactivation_date = date('Y-m-d', time()); // Current date
           $profile->set('field_member_reactivation_date', $reactivation_date);
           $this->logger->notice('Setting reactivation date for profile ID: @profile_id to: @date', [
