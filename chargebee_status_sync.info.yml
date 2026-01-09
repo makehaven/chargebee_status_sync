@@ -1,7 +1,8 @@
 name: 'Chargebee Status Sync'
 type: module
 description: 'Syncs status updates from Chargebee to Drupal.'
-package: Custom
+package: Makerspace
 core_version_requirement: ^10 || ^11
 dependencies:
   - drupal:field
+configure: chargebee_status_sync.settings
