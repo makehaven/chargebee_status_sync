@@ -182,6 +182,7 @@ switch ($data['event_type']) {
                 $this->clearCancellationFields($customer_id);
                 if ($user) {
                     $this->clearUserPauseField($user);
+                    $this->clearPaymentFailedField($user);
                 }
 
                 break;
@@ -252,6 +253,16 @@ protected function clearUserPauseField(User $user) {
         $this->logger->notice('Clearing pause status for user ID: @user_id', ['@user_id' => $user->id()]);
         $user->set('field_chargebee_payment_pause', 0);
         $user->save();
+    }
+}
+
+protected function clearPaymentFailedField(User $user) {
+    if ($user->hasField('field_payment_failed') && !$user->get('field_payment_failed')->isEmpty()) {
+        if ($user->get('field_payment_failed')->value == 1) {
+            $this->logger->notice('Clearing payment failed status for user ID: @user_id', ['@user_id' => $user->id()]);
+            $user->set('field_payment_failed', 0);
+            $user->save();
+        }
     }
 }
 
