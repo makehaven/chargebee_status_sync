@@ -131,7 +131,7 @@ switch ($data['event_type']) {
                 }
     
         // Remove the member role.
-        $this->removeMemberRole($customer_id);
+        $this->removeMemberRole($customer_id, $user);
     
         break;
     
@@ -179,7 +179,7 @@ switch ($data['event_type']) {
                 // Ensure active status (add role, clear cancellation flags) for all active subscription events.
                 // This covers new subscriptions (created), plan changes (updated), and reactivations.
                 // Note: clearCancellationFields checks if the user was actually cancelled before setting reactivation date.
-                $this->clearCancellationFields($customer_id);
+                $this->clearCancellationFields($customer_id, $user);
                 if ($user) {
                     $this->clearUserPauseField($user);
                     $this->clearPaymentFailedField($user);
@@ -234,8 +234,8 @@ return new Response('Webhook received successfully.', 200);
 
 
 
-protected function removeMemberRole($customer_id) {
-  $user = $this->getUserByCustomerId($customer_id);
+protected function removeMemberRole($customer_id, User $user_context = NULL) {
+  $user = $user_context ?: $this->getUserByCustomerId($customer_id);
   if ($user) {
       $member_role_id = \Drupal::config('chargebee_status_sync.settings')->get('chargebee_status_member_role');
       if ($member_role_id && $user->hasRole($member_role_id)) {
@@ -297,7 +297,7 @@ protected function getUserProfileByCustomerId($customer_id) {
 }
 
 
-protected function clearCancellationFields($customer_id) {
+protected function clearCancellationFields($customer_id, User $user_context = NULL) {
   $profile = $this->getUserProfileByCustomerId($customer_id);
   if ($profile) {
       $profile_modified = FALSE;
@@ -338,9 +338,13 @@ protected function clearCancellationFields($customer_id) {
       }
 
       // Add Member Role.
-      $user = $profile->getOwner();
+      $user = $user_context;
+      if (!$user) {
+          $user = $profile->getOwner();
+      }
+      
       $member_role_id = \Drupal::config('chargebee_status_sync.settings')->get('chargebee_status_member_role');
-      if ($member_role_id && !$user->hasRole($member_role_id)) {
+      if ($member_role_id && $user && !$user->hasRole($member_role_id)) {
           $this->logger->notice('Adding Member Role for user ID: @user_id', ['@user_id' => $user->id()]);
           $user->addRole($member_role_id);
           $user->save();
