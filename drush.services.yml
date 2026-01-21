@@ -1,0 +1,8 @@
+services:
+  chargebee_status_sync.commands:
+    class: Drupal\chargebee_status_sync\Commands\ChargebeeStatusSyncCommands
+    arguments:
+      - '@entity_type.manager'
+      - '@chargebee_status_sync.plan_manager'
+    tags:
+      - { name: drush.command }

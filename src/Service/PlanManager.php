@@ -138,11 +138,45 @@ class PlanManager {
       return;
     }
 
-    $membership_target = $plan_term->get(static::PLAN_MEMBERSHIP_FIELD)->target_id;
-    if (!$membership_target) {
+    $membership_target = (int) $plan_term->get(static::PLAN_MEMBERSHIP_FIELD)->target_id;
+    if (empty($membership_target)) {
       return;
     }
 
+    $this->applyMembershipTypeToUser($user, $membership_target, $plan_term->label());
+  }
+
+  /**
+   * Apply the mapped membership type for a plan ID to the user's profile.
+   */
+  public function assignMembershipTypeByPlanId(UserInterface $user, string $plan_id, bool $log_missing = TRUE): bool {
+    $plan_term = $this->getPlanTermForPlanId($plan_id);
+    if (!$plan_term instanceof TermInterface) {
+      if ($log_missing) {
+        $this->logger->notice('No membership type mapping found for plan ID @plan.', ['@plan' => $plan_id]);
+      }
+      return FALSE;
+    }
+
+    if (!$plan_term->hasField(static::PLAN_MEMBERSHIP_FIELD) || $plan_term->get(static::PLAN_MEMBERSHIP_FIELD)->isEmpty()) {
+      if ($log_missing) {
+        $this->logger->notice('Plan @plan has no membership type mapping.', ['@plan' => $plan_term->label()]);
+      }
+      return FALSE;
+    }
+
+    $membership_target = (int) $plan_term->get(static::PLAN_MEMBERSHIP_FIELD)->target_id;
+    if (empty($membership_target)) {
+      return FALSE;
+    }
+
+    return $this->applyMembershipTypeToUser($user, $membership_target, $plan_term->label());
+  }
+
+  /**
+   * Apply a membership type to the user's main profile.
+   */
+  protected function applyMembershipTypeToUser(UserInterface $user, int $membership_target, string $context): bool {
     $profile_storage = $this->entityTypeManager->getStorage('profile');
     $profiles = $profile_storage->loadByProperties([
       'uid' => $user->id(),
@@ -151,27 +185,28 @@ class PlanManager {
 
     if (empty($profiles)) {
       $this->logger->warning('No main profile found for user @uid when applying membership type.', ['@uid' => $user->id()]);
-      return;
+      return FALSE;
     }
 
     /** @var \Drupal\profile\Entity\ProfileInterface $profile */
     $profile = reset($profiles);
     if (!$profile instanceof ProfileInterface || !$profile->hasField(static::PROFILE_MEMBERSHIP_FIELD)) {
       $this->logger->warning('Profile for user @uid is missing the membership field.', ['@uid' => $user->id()]);
-      return;
+      return FALSE;
     }
 
     $current_value = $profile->get(static::PROFILE_MEMBERSHIP_FIELD)->target_id;
     if ((int) $current_value === (int) $membership_target) {
-      return;
+      return FALSE;
     }
 
     $profile->set(static::PROFILE_MEMBERSHIP_FIELD, $membership_target);
     $profile->save();
     $this->logger->info('Updated membership type for user @uid based on plan @plan.', [
       '@uid' => $user->id(),
-      '@plan' => $plan_term->label(),
+      '@plan' => $context,
     ]);
+    return TRUE;
   }
 
   /**
@@ -193,6 +228,24 @@ class PlanManager {
     /** @var \Drupal\taxonomy\TermInterface $term */
     $term = $storage->load(reset($tids));
     return $term instanceof TermInterface ? $term : NULL;
+  }
+
+  /**
+   * Load the plan term for a Chargebee plan ID.
+   */
+  public function getPlanTermForPlanId(string $plan_id): ?TermInterface {
+    return $this->loadPlanByIdentifier($plan_id);
+  }
+
+  /**
+   * Get the membership type target ID from a plan term.
+   */
+  public function getMembershipTypeTargetIdFromPlanTerm(TermInterface $plan_term): ?int {
+    if (!$plan_term->hasField(static::PLAN_MEMBERSHIP_FIELD) || $plan_term->get(static::PLAN_MEMBERSHIP_FIELD)->isEmpty()) {
+      return NULL;
+    }
+    $target = (int) $plan_term->get(static::PLAN_MEMBERSHIP_FIELD)->target_id;
+    return $target ?: NULL;
   }
 
 }

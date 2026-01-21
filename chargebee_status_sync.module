@@ -1,0 +1,45 @@
+<?php
+
+/**
+ * @file
+ * Hooks for Chargebee Status Sync.
+ */
+
+/**
+ * Implements hook_cron().
+ */
+function chargebee_status_sync_cron(): void {
+  $limit = 50;
+  $state = \Drupal::state();
+  $last_uid = (int) $state->get('chargebee_status_sync.membership_sync_last_uid', 0);
+
+  $query = \Drupal::entityQuery('user')
+    ->accessCheck(FALSE)
+    ->condition('field_user_chargebee_plan', NULL, 'IS NOT NULL')
+    ->condition('uid', $last_uid, '>')
+    ->sort('uid', 'ASC')
+    ->range(0, $limit);
+
+  $uids = $query->execute();
+  if (empty($uids)) {
+    $state->set('chargebee_status_sync.membership_sync_last_uid', 0);
+    return;
+  }
+
+  $state->set('chargebee_status_sync.membership_sync_last_uid', max($uids));
+
+  $storage = \Drupal::entityTypeManager()->getStorage('user');
+  $users = $storage->loadMultiple($uids);
+  $plan_manager = \Drupal::service('chargebee_status_sync.plan_manager');
+
+  foreach ($users as $user) {
+    if (!$user->hasField('field_user_chargebee_plan') || $user->get('field_user_chargebee_plan')->isEmpty()) {
+      continue;
+    }
+    $plan_id = trim((string) $user->get('field_user_chargebee_plan')->value);
+    if ($plan_id === '') {
+      continue;
+    }
+    $plan_manager->assignMembershipTypeByPlanId($user, $plan_id, FALSE);
+  }
+}
